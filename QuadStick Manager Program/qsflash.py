@@ -99,7 +99,7 @@ def find_quadstick_drive(force=None):
         volumes = os.listdir(volumes_path)
 
         for volume in volumes:
-            if "quad" in volume and "stick" in volume:
+            if "Quad" in volume and "Stick" in volume:
                 QuadStickDrive = volumes_path + '/' + volume + '/'
                 print("Found drive ", volume)
                 return QuadStickDrive

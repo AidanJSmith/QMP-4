@@ -26,12 +26,17 @@ class QuadStickHID(object):
         self._output_report_value = None
         self._old_data = None
         self._cm = CM
+        self._last_read_successful = False
 
     def read_data(self):
         while self._qs:
-            data = self._us._qs(64)
-            if data:
-                self.read_data(data)
+            try:
+                data = self._qs.read(64)
+                if data:
+                    self._last_read_successful = True
+                    self.data_handler(data)
+            except Exception as e:
+                self._last_read_successful = False
 
     def open(self): #, cm_updater):
         try:
@@ -101,6 +106,9 @@ class QuadStickHID(object):
         print('status')
         # if self._qs:
         #     self.log("quadstick hid status: Active= ", self._qs.is_active(), " Open= ", self._qs.is_opened(), " Plugged= ", self._qs.is_plugged())
+
+    def is_plugged(self) -> bool:
+        return (self._qs is not None) and self._last_read_successful
 
     def close(self):
         if self._qs:

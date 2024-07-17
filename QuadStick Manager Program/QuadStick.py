@@ -2810,7 +2810,7 @@ class QuadStickPreferences(wx.Frame):
                 if VG:
                     VG.reset()
             else:
-                if not QS._qs.is_plugged():
+                if not QS.is_plugged():
                     QS.close()
                     self.text_ctrl_messages.AppendText("Quadstick disconnected\r\n")
         except Exception as e:
@@ -3030,6 +3030,3 @@ else:
     print('start in interactive mode')
     t = threading.Thread(target=main)
     t.start()
-#if __name__ == "__main__":
-    #main()
-
