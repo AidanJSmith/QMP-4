@@ -1,7 +1,8 @@
+import threading
 from time import sleep
-from pywinusb import hid
 from qsflash import settings
 import math
+import hid
 
 ULTRASTIK_VENDOR_ID = 0xD209
 ULTRASTIK_PRODUCT_ID_1 = 0x0501
@@ -16,23 +17,36 @@ class UltraStikHID(object):
         self._qs_data_handler = None
         self._enabled = False
 
+    def read_data(self):
+        while self._us:
+            data = self._us.read(64)
+            if data:
+                self.data_handler(data)
+
     def open(self, qs, device_id=0):
         try:
             self._device_id = device_id
             self._id_offset = device_id * 4
             for i in range(10):
                 for self._PID in (ULTRASTIK_PRODUCT_ID_1, ULTRASTIK_PRODUCT_ID_2,):
-                    ultrasticks = hid.HidDeviceFilter(vendor_id = ULTRASTIK_VENDOR_ID, product_id = (self._PID + device_id)).get_devices()
-                    if len(ultrasticks) > 0: 
+                    try:
+                        device = hid.device()
+                        device.open(ULTRASTIK_VENDOR_ID, self._PID + device_id)
+                        self._us = device
                         break
-                self._us = ultrasticks[0] #throws exception if no ultrasticks found
+                    except IOError as e:
+                        print(f"Could not find or open device: {ULTRASTIK_VENDOR_ID}:{self._PID + device_id}")
                 print("UltraStik found: ", self._us)
                 self._report_count = 0
-                self._us.open()
+                # self._us.open()
                 if qs:
                     self._qs_data_handler = qs.send_feature_report
                 #sleep(0.1)
-                self._us.set_raw_data_handler(self.data_handler)
+                # Start a thread to read data continuously
+                self.read_thread = threading.Thread(target=self.read_data)
+                self.read_thread.daemon = True
+                self.read_thread.start()
+
                 sleep(0.2)
                 if self._report_count > 0:
                     self.log( 'UltraStik 360 Joystick ' + str(device_id + 1) + ' interface successfully opened' )  #can't use %d format with wxglade
@@ -45,20 +59,20 @@ class UltraStikHID(object):
             self.log( '**** Failed to open UltraStik 360 Joystick ' + str(device_id + 1) + " Try closing program and re-opening ****" )  #can't use %d format with wxglade
         except Exception as e:
             print('UltraStik exception: ', repr(e))
-            #don't say anything about it  
+            #don't say anything about it
             #self.log( 'UltraStik Game Controller ' + str(device_id + 1) + ' is not connected to PC' )
         try:
             self._us.close() # attempt to close if error occurred after open
         except:
             pass
         return None
-            
+
     def check_status(self):
         if self._us:
             print("UltraStick hid status: Active= ", self._us.is_active(), " Open= ", self._us_is_open(), " Plugged= ", self._us_is_plugged())
 
     def close(self):
-        if self._us: 
+        if self._us:
             self._us.close()
             self._us = None
 
@@ -94,7 +108,7 @@ class UltraStikHID(object):
                     y = int(y * ratio)
                     x = x if x < 100 else 100 # limit value range to +/- 100
                     x = x if x > -100 else -100
-                    y = y if y < 100 else 100 
+                    y = y if y < 100 else 100
                     y = y if y > -100 else -100
                     # if negative, offset by 256 so value is unsigned postive
                     ReportValue[0 + self._id_offset] = x if x >= 0 else 256 + x

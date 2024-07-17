@@ -1,4 +1,5 @@
-from pywinusb import hid
+import threading
+import hid
 import traceback
 import sys
 import copy
@@ -26,6 +27,12 @@ class QuadStickHID(object):
         self._old_data = None
         self._cm = CM
 
+    def read_data(self):
+        while self._qs:
+            data = self._us._qs(64)
+            if data:
+                self.read_data(data)
+
     def open(self): #, cm_updater):
         try:
             ids = ((QUADSTICK_VENDOR_ID, QUADSTICK_PRODUCT_ID), \
@@ -36,12 +43,23 @@ class QuadStickHID(object):
                    (HORI_VENDOR_ID, HORI_PRODUCT_ID))
             quadsticks = []
             for (vendor_id, product_id) in ids:
-                quadsticks = hid.HidDeviceFilter(vendor_id = vendor_id, product_id = product_id).get_devices()
+                try:
+                    device = hid.device()
+                    device.open(vendor_id, product_id)
+                    quadsticks.append(device)
+
+                    if quadsticks:
+                        break
+                except IOError as e:
+                    print(f"Could not find or open device: {vendor_id}:{product_id}")
                 if quadsticks:
                     break #found a quadstick
             self._qs = quadsticks[0] # throws exception if no quadstick  @todo handle more or less than one device
             #print qs
-            self._qs.open()
+            self.read_thread = threading.Thread(target=self.read_data)
+            self.read_thread.daemon = True
+            self.read_thread.start()
+
             self.log( 'QuadStick Game Controller interface successfully opened' )
             #self.log( self._qs.product_name )
             if self._cm:  # clear out ViGEmBus settings regarding mode quadstick is in
@@ -55,7 +73,7 @@ class QuadStickHID(object):
                     #self.log( '**USB commands and CronusMax connection will not work in X360CE mode**' )
             elif (product_id == HORI_PRODUCT_ID or product_id == QUADSTICK_PRODUCT_ID+2 or product_id == QUADSTICK_PRODUCT_ID+3):
                 # the same id is used in usb mode 6, which is not supplying PS4 packets
-                if (self._qs.product_name == 'Quad Stick PS4 mode'):
+                if (self._qs.get_product_string() == 'Quad Stick PS4 mode'):
                     self.log( 'QuadStick is in PS4 mode')
                     if self._cm:
                         self._cm.DS4_mode = True # let CM object know reports will be for DS4.
@@ -63,7 +81,7 @@ class QuadStickHID(object):
             if self._cm:
                 self._data_handler = self._cm.unbuffered_update
                 self._qs.set_raw_data_handler(self._cm.unbuffered_update)
-            
+
             #self._qs.set_raw_data_handler(self.data_handler)
             self._feature_report_value = None
             self._output_report_value = None
@@ -76,15 +94,16 @@ class QuadStickHID(object):
                 self._qs.close() # attempt to close if error occurred after open
             except:
                 pass
-            
+
         return None
-            
+
     def check_status(self):
-        if self._qs:
-            self.log("quadstick hid status: Active= ", self._qs.is_active(), " Open= ", self._qs.is_opened(), " Plugged= ", self._qs.is_plugged())
+        print('status')
+        # if self._qs:
+        #     self.log("quadstick hid status: Active= ", self._qs.is_active(), " Open= ", self._qs.is_opened(), " Plugged= ", self._qs.is_plugged())
 
     def close(self):
-        if self._qs: 
+        if self._qs:
             self._qs.close()
             self._qs = None
 
@@ -98,13 +117,13 @@ class QuadStickHID(object):
 
     def send_feature_report(self, data, retry=1):  # used to transmit ultrastik, trackir or mouse location data to the quadstick
         try:
-            if self._qs is None: 
+            if self._qs is None:
                 if data == self._old_data:
                     # print "no change in report"
                     return
                 self._old_data = copy.copy(data)
                 if self.mainWindow.microterm:
-                    self.mainWindow.microterm.send_external_pointer_update(data)  # use serial port instead of usb                  
+                    self.mainWindow.microterm.send_external_pointer_update(data)  # use serial port instead of usb
                 self.update_display(data)
                 return
             if self._feature_report_value is None:
@@ -133,7 +152,7 @@ class QuadStickHID(object):
                     self.send_feature_report(data, 0)
             except:
                 print("send_feature_report retry failed")
-            
+
     def update_display(self, data):
         try: # to update the display on the External Pointer tab
             if data[0] < 128: # positive value, moving to the Right
@@ -171,8 +190,8 @@ class QuadStickHID(object):
             self.mainWindow.TIR_RightDown.Refresh()
         except Exception as e:
             print('Exception in TIR widget update: ', repr(e))
-    
-    
+
+
     def send_output_report(self, data, retry=1):
         try:
             if self._output_report_value is None:
@@ -213,7 +232,7 @@ class QuadStickHID(object):
             self.send_output_report(list(chunk))
             bytes = bytes[8:]
             chunk = bytes[:8]
-            
+
     def enable(self, flag=True):
         self._enabled = flag
 
@@ -227,6 +246,6 @@ class QuadStickHID(object):
             self._log(str(arg))
         self._log("\n")
     def get_path(self):
-        if self._qs: 
+        if self._qs:
             return self._qs.device_path
         return None

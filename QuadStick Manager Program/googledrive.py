@@ -19,13 +19,10 @@ import traceback
 firmware_json = "http://fwjson3.quadstick.com"
 #firmware_json = "https://drive.google.com/uc?id=0B7MVckMP_1T0QVhtVlVJdjl4b2M&authuser=0&export=download"
 
-# this is used for updating from 1.04 to 2.00.  
-#games_folder_url = "https://quadstick.s3.amazonaws.com/configurations/QuadStick/"
-
 folder_row_div_tag = '<div class="folder-row">'
 
-#games_profile_list_spreadsheet = "http://B9BThNV1MJRXtzB9sFR.quadstick.com" 
-factory_games_ids_list = "http://bvhbml89uymwxubx.quadstick.com" 
+#games_profile_list_spreadsheet = "http://B9BThNV1MJRXtzB9sFR.quadstick.com"
+factory_games_ids_list = "http://bvhbml89uymwxubx.quadstick.com"
 
 version_url = "http://qmp2version.quadstick.com"
 #telemetery_url =  "https://script.google.com/a/macros/quadstick.com/s/AKfycbwdzab1ps7bvGlXKHnQKkDKqGJf_i5MmaN7sXhqrcj75Wt5dlE/exec"
@@ -73,7 +70,7 @@ def get_firmware_versions():
         del firmware_builds[:]
         firmware_builds.extend(builds)
     return firmware_builds
-    
+
 # Check for update to this program
 def check_for_newer_version(mainWindow):
     # put this on a separate thread so the program becomes responsive if the urlopen takes a long time
@@ -82,62 +79,63 @@ def check_for_newer_version(mainWindow):
     t.start()
 
 def _check_for_newer_version(mainWindow):
-    try:
-        print("check for newer QMP version")
-        try:
-            f = urllib.request.urlopen(version_url, None, 5.0) #firmware_folder_url + "version.ini")
-        except:
-            f = urllib.request.urlopen(version_url, None, 5.0)
-        version = f.read().decode()
-        print("version: ", version, VERSION)
-        if version > VERSION:
-            wx.CallAfter(mainWindow.text_ctrl_messages.AppendText, "A newer version of this program is available at QuadStick.com\r\nVisit http://quadstick.com/downloads\r\n") 
-            
-            # if it has been more than a week since the last time we asked
-            print("last time declined qmp update ", qsflash.settings.get("declined_qmp_update", 0))
-            if (time.time() > (qsflash.settings.get("declined_qmp_update", 0) + (86400 * 7))):
-                confirm = wx.MessageDialog( mainWindow, "Download the new update?", caption="QMP Update available", style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION | wx.STAY_ON_TOP )
-                result = confirm.ShowModal()
-                if result == wx.ID_YES:
-                    import webbrowser
-                    url = """https://www.quadstick.com/downloads/"""
-                    webbrowser.open(url, new=2)
-                    qsflash.settings["declined_qmp_update"] = 0 # if they don't follow through, ask again next time
-                else: # they declined to update.  Ask again in a week
-                    qsflash.settings["declined_qmp_update"] = time.time()
-            
-                return # don't inflict two dialog boxes on them
+    # try:
+    #     print("check for newer QMP version")
+    #     try:
+    #         f = urllib.request.urlopen(version_url, None, 5.0) #firmware_folder_url + "version.ini")
+    #     except:
+    #         f = urllib.request.urlopen(version_url, None, 5.0)
+    #     version = f.read().decode()
+    #     print("version: ", version, VERSION)
+    #     if version > VERSION:
+    #         wx.CallAfter(mainWindow.text_ctrl_messages.AppendText, "A newer version of this program is available at QuadStick.com\r\nVisit http://quadstick.com/downloads\r\n")
 
-        print("latest version is: ", version)
-        build = mainWindow.build_number_text.GetValue()
-        telemetry_log('start&version=' + VERSION + '&firmware=' + build)
-    except Exception as e:
-        print("check_for_newer_version exception " + repr(e))
-        print(traceback.format_exc())
-    # check for firmware update
-    if build == 'None':  # no point if checking if not plugged in
-        return
-    try:
-        print("check firmware version")
-        builds = get_firmware_versions()
-        for bld in builds:
-            b = int(bld.get("version",0))
-            if b > int(build):
-                if "TEST" in bld.get("comment"):
-                    continue
-                wx.CallAfter(mainWindow.text_ctrl_messages.AppendText, "A newer version of the firmware is available. Please update.\r\n") 
-                print("last time declined firmware update ", qsflash.settings.get("declined_firmware_update", 0))
-                if (time.time() > (qsflash.settings.get("declined_firmware_update", 0) + (86400 * 7))):
-                    confirm = wx.MessageDialog( mainWindow, "Please install the new firmware update.", caption="Firmware Update available", style=wx.OK | wx.STAY_ON_TOP )
-                    #confirm.OKLabel = "Close"
-                    result = confirm.ShowModal()
-                    qsflash.settings["declined_firmware_update"] = time.time()
-                return
-                
-    except Exception as e:
-        print("check for newer firmware exception " + repr(e))
-        print(traceback.format_exc())
-        
+    #         # if it has been more than a week since the last time we asked
+    #         print("last time declined qmp update ", qsflash.settings.get("declined_qmp_update", 0))
+    #         if (time.time() > (qsflash.settings.get("declined_qmp_update", 0) + (86400 * 7))):
+    #             confirm = wx.MessageDialog( mainWindow, "Download the new update?", caption="QMP Update available", style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION | wx.STAY_ON_TOP )
+    #             result = confirm.ShowModal()
+    #             if result == wx.ID_YES:
+    #                 import webbrowser
+    #                 url = """https://www.quadstick.com/downloads/"""
+    #                 webbrowser.open(url, new=2)
+    #                 qsflash.settings["declined_qmp_update"] = 0 # if they don't follow through, ask again next time
+    #             else: # they declined to update.  Ask again in a week
+    #                 qsflash.settings["declined_qmp_update"] = time.time()
+
+    #             return # don't inflict two dialog boxes on them
+
+    #     print("latest version is: ", version)
+    #     build = mainWindow.build_number_text.GetValue()
+    #     telemetry_log('start&version=' + VERSION + '&firmware=' + build)
+    # except Exception as e:
+    #     print("check_for_newer_version exception " + repr(e))
+    #     print(traceback.format_exc())
+    # # check for firmware update
+    # if build == 'None':  # no point if checking if not plugged in
+    #     return
+    # try:
+    #     print("check firmware version")
+    #     builds = get_firmware_versions()
+    #     for bld in builds:
+    #         b = int(bld.get("version",0))
+    #         if b > int(build):
+    #             if "TEST" in bld.get("comment"):
+    #                 continue
+    #             wx.CallAfter(mainWindow.text_ctrl_messages.AppendText, "A newer version of the firmware is available. Please update.\r\n")
+    #             print("last time declined firmware update ", qsflash.settings.get("declined_firmware_update", 0))
+    #             if (time.time() > (qsflash.settings.get("declined_firmware_update", 0) + (86400 * 7))):
+    #                 confirm = wx.MessageDialog( mainWindow, "Please install the new firmware update.", caption="Firmware Update available", style=wx.OK | wx.STAY_ON_TOP )
+    #                 #confirm.OKLabel = "Close"
+    #                 result = confirm.ShowModal()
+    #                 qsflash.settings["declined_firmware_update"] = time.time()
+    #             return
+
+    # except Exception as e:
+    #     print("check for newer firmware exception " + repr(e))
+    #     print(traceback.format_exc())
+    print('do not support auto-update because this is a custom fork :)')
+
 def telemetry_log(log_string):
     # put this on a separate thread so the program does not slow down for user
     t = threading.Thread(target=_telemetry_log, args=(log_string,))
@@ -167,10 +165,10 @@ def get_spreadsheet_folder_ids(key):
         title = title.split('</div>')[0]
         ids[title] = id
     return ids
-    
+
 def test_get_spreadsheet_ids():
     print(repr(get_spreadsheet_folder_ids("0BwJQJADcHggka2htZ0FlM2FMdTQ")))
-    
+
 
 # def get_factory_game_files_list():
     # f = urllib2.urlopen(factory_games_ids_list)
@@ -188,7 +186,7 @@ MaxActiveThreads = threading.Semaphore(1)
 
 # From Public Quadstick Google Drive that holds game profiles, get list of game folders
 
-# these are used to import old games from version 1.04 into 2.00  
+# these are used to import old games from version 1.04 into 2.00
 def get_game_profiles(url, mainWindow):
     game_profiles = queue.Queue() #[] # get fresh list
     rows = get_google_folders_from(url)
@@ -241,13 +239,13 @@ def get_game_profile(game_profiles, row, url):
             path = ('/').join(path)
             path = '%27'.join(path.split("&#39;")) #fix apostrophe encoding
             print(game_name,name, path)
-            #index = len(game_profiles) 
+            #index = len(game_profiles)
             game_profiles.put((game_name, folder, path, name, url))
     except:
         print("something went wrong in get_game_profile")
         pass
     MaxActiveThreads.release()
-            
+
 def read_google_drive_file(path, url):
     f = urllib.request.urlopen(url + path)
     page = f.read()
@@ -269,9 +267,8 @@ def get_factory_game_and_voice_files():
         except Exception as e:
             print("Unable to get_factory_game_and_voice_files: ", repr(e))
     games = qsflash.settings.get("games", [])
-    voices = qsflash.settings.get("voices", [])
     return [games, voices]
-            
+
 # def read_S3_file(path, url=games_folder_url):
     # f = urllib2.urlopen(url + path)
     # page = f.read()

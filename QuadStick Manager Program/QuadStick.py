@@ -21,7 +21,7 @@
 # add anti-dead-zone to external pointers
 # add gain to external pointers
 # add circular dead-zone to external pointers
-# handle x360ce mode to update value grid and cronus max.  
+# handle x360ce mode to update value grid and cronus max.
 # add path to game files in hover?
 # add copied game file message to transcript
 # add copy/delete quadstick files over Bluetooth connection
@@ -45,6 +45,7 @@ import urllib.request, urllib.parse, urllib.error
 import urllib.request, urllib.error, urllib.parse
 import socket
 import wx.lib.agw.pygauge as PG
+# from QMPSend import *
 import wx.grid
 import wx.adv
 import subprocess
@@ -52,12 +53,9 @@ import sys
 
 import xlsx2csv
 import qsflash
-import HIDHide
 
 from qsflash import *
-from vocola import *
 from microterm import microterm, has_serial_ports
-from ViGEmBus import VirtualGamepadEmulator
 from QuadStickHID import *
 from ultrastik import *
 #from trackir import *
@@ -72,6 +70,8 @@ tmp_log_path = None
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 logfile = None
+UDP_IP = "127.0.0.1" #"0.0.0.0" #
+UDP_PORT = 47807
 
 # Global variables for devices
 VG = None
@@ -80,7 +80,6 @@ US1 = None
 US2 = None
 TIR = None
 MOUSE = None
-H = None   # HIDHide handler
 
 SERIAL_PORT_SOCKET = None
 
@@ -112,7 +111,7 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
-    
+
 # Define Text Drop Target class
 
 def create_menu_item(menu, label, func):
@@ -124,37 +123,37 @@ def create_menu_item(menu, label, func):
 
 class CustomTaskBarIcon(wx.adv.TaskBarIcon):
     """"""
-    
+
     #----------------------------------------------------------------------
     def __init__(self, frame):
         """Constructor"""
         wx.adv.TaskBarIcon.__init__(self)
         self.frame = frame
-        
+
         # img = wx.Image("24x24.png", wx.BITMAP_TYPE_ANY)
         # bmp = wx.BitmapFromImage(img)
         # self.icon = wx.EmptyIcon()
         # self.icon.CopyFromBitmap(bmp)
-        
+
         # self.SetIcon(self.icon, "Restore")
         ib = wx.IconBundle()
         ib.AddIcon(resource_path("quadstickx.ico"), wx.BITMAP_TYPE_ANY)
         i = ib.GetIcon(wx.Size(24,24))
         self.SetIcon(i)
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.OnTaskBarLeftClick)
- 
+
     #----------------------------------------------------------------------
     def OnTaskBarActivate(self, evt):
         """"""
         pass
- 
+
     #----------------------------------------------------------------------
     def OnTaskBarClose(self, evt):
         """
         Destroy the taskbar icon and frame from the taskbar icon itself
         """
         self.frame.Close()
- 
+
     #----------------------------------------------------------------------
     def OnTaskBarLeftClick(self, evt):
         """
@@ -162,7 +161,7 @@ class CustomTaskBarIcon(wx.adv.TaskBarIcon):
         """
         self.frame.Show()
         self.frame.Restore()
-        
+
     #----------------------------------------------------------------------
     def CreatePopupMenu(self):
         menu = wx.Menu()
@@ -180,7 +179,7 @@ class CustomTaskBarIcon(wx.adv.TaskBarIcon):
         """
         self.frame.Show()
         self.frame.Maximize()
-        
+
     #----------------------------------------------------------------------
     def OnMinimize(self, evt):
         """
@@ -188,7 +187,7 @@ class CustomTaskBarIcon(wx.adv.TaskBarIcon):
         """
         self.frame.Show()
         self.frame.Iconize()
-        
+
 
     def on_exit(self, event):
         self.frame.Close()
@@ -229,7 +228,7 @@ class MouseCapture(wx.Dialog):
         self._mode = settings['mouse_capture_mode']
         self._center = wx.Point(settings['mouse_center_x'], settings['mouse_center_y'])
         self._width = float(settings['mouse_width'])/2
-        self._height = float(settings['mouse_height'])/2 
+        self._height = float(settings['mouse_height'])/2
         self._limit_x = int(self._width * 0.75)
         self._limit_y = int(self._height * 0.75)
         self._gain_x = float(settings['mouse_gain_x'])
@@ -266,7 +265,7 @@ class MouseCapture(wx.Dialog):
         #print "buttons: ", repr(self._buttons)
         self.update_mouse((event.GetPosition() - self._center).Get())
         event.Skip()
-        
+
     def MouseEventText(self, event):
         # the text message in the middle of the screen gets separate events from the rest of the screen
         #print "mouse event: ", repr(event)
@@ -279,7 +278,7 @@ class MouseCapture(wx.Dialog):
         #print "buttons: ", repr(self._buttons)
         self.update_mouse(((event.GetPosition() + self.message.GetPosition()) - self._center).Get())
         event.Skip()
-        
+
     def update_mouse(self, xy):
         if self._mode == "Motion":
             now = time.time()
@@ -304,7 +303,7 @@ class MouseCapture(wx.Dialog):
             self._dydt = ((self._dydt * MOUSE_CAPTURE_LOW_PASS_FILTER) + (self._delta_y / delta_time)) / (MOUSE_CAPTURE_LOW_PASS_FILTER + 1)
             xy = (self._dxdt, self._dydt)
             self._timer.Start(50, True) #one shot, not recurring
-            
+
         if MOUSE:
             x = int((xy[0] * self._gain_x) / self._width)
             y = int((xy[1] * self._gain_y) / self._height)
@@ -313,7 +312,7 @@ class MouseCapture(wx.Dialog):
             y = y if y < 100 else 100
             y = y if y > -100 else -100
             MOUSE.update_location(x, y, self._buttons)
-            
+
     def TimerEvent(self, event):
         # print "timer expired before a movement was detected.  Update mouse."
         self._dxdt = 0.0
@@ -359,10 +358,10 @@ class TextDropTarget(wx.TextDropTarget):
 
 
 class QSGauge(wx.lib.agw.pygauge.PyGauge):
-    """ 
+    """
     Allow vertical bars
     """
-    
+
     def OnPaint(self, event):
         """
         Handles the ``wx.EVT_PAINT`` event for L{PyGauge}.
@@ -372,15 +371,15 @@ class QSGauge(wx.lib.agw.pygauge.PyGauge):
 
         dc = wx.BufferedPaintDC(self)
         rect = self.GetClientRect()
-        
+
         dc.SetBackground(wx.Brush(self.GetBackgroundColour()))
         dc.Clear()
         colour = self.GetBackgroundColour()
         dc.SetBrush(wx.Brush(colour))
         dc.SetPen(wx.Pen(colour))
         dc.DrawRectangle(rect)
-        
-        
+
+
         if self._border_colour:
             dc.SetPen(wx.Pen(self.GetBorderColour()))
             dc.DrawRectangle(rect)
@@ -393,9 +392,9 @@ class QSGauge(wx.lib.agw.pygauge.PyGauge):
                 c1,c2 = gradient
                 w = int(rect.width * (float(self._valueSorted[i]) / self._range))
                 r = copy.copy(rect)
-                r.width = w 
+                r.width = w
                 dc.GradientFillLinear(r, c1, c2, wx.EAST)
-        else:       
+        else:
             for i, colour in enumerate(self._barColourSorted):
                 dc.SetBrush(wx.Brush(colour))
                 dc.SetPen(wx.Pen(colour))
@@ -567,7 +566,7 @@ class UnableToSave(wx.Dialog):
 class QuadStickPreferences(wx.Frame):
     def __init__(self, *args, **kwds):
         # over write wx.Gauge widget with a modified version of PyGauge from the AGW library
-        wx.Gauge = QSGauge 
+        wx.Gauge = QSGauge
         # begin wxGlade: QuadStickPreferences.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
@@ -953,10 +952,6 @@ class QuadStickPreferences(wx.Frame):
         self.checkbox_enable_vg_DS4.SetToolTip(_("Enables the ViGEmBus DS4 virtual controller.  Allows playing PC games that use the DS4 controller, or Playstation Remote Play"))
         sizer_68.Add(self.checkbox_enable_vg_DS4, 0, 0, 0)
 
-        self.checkbox__enable_HIDHide = wx.CheckBox(self.notebook_misc, wx.ID_ANY, _("Enable HIDHide to hide Quadstick from games"))
-        self.checkbox__enable_HIDHide.SetToolTip(_("When using an XBox or DS4 virtual controller, this setting prevents games and other programs from detecting the presence of the Quadstick's controller interface if they detect activity from older Direct Input controllers."))
-        sizer_68.Add(self.checkbox__enable_HIDHide, 0, 0, 0)
-
         sizer_1 = wx.StaticBoxSizer(wx.StaticBox(self.notebook_misc, wx.ID_ANY, _("QMP settings")), wx.VERTICAL)
         sizer_17.Add(sizer_1, 1, wx.EXPAND, 0)
 
@@ -1003,68 +998,6 @@ class QuadStickPreferences(wx.Frame):
 
         self.download_selected_build = wx.Button(self.notebook_firmware, wx.ID_ANY, _("Download selected Firmware\nto QuadStick"))
         sizer_27.Add(self.download_selected_build, 1, 0, 0)
-
-        self.notebook_pane_transcript = wx.Panel(self.notebook, wx.ID_ANY)
-        self.notebook.AddPage(self.notebook_pane_transcript, _("Voice Control"))
-
-        sizer_4 = wx.StaticBoxSizer(wx.StaticBox(self.notebook_pane_transcript, wx.ID_ANY, _("Voice Command Transcript")), wx.HORIZONTAL)
-
-        self.voice_transcript = wx.TextCtrl(self.notebook_pane_transcript, wx.ID_ANY, "", style=wx.TE_CHARWRAP | wx.TE_MULTILINE | wx.TE_PROCESS_ENTER | wx.TE_WORDWRAP)
-        self.voice_transcript.SetFocus()
-        sizer_4.Add(self.voice_transcript, 3, wx.EXPAND, 0)
-
-        self.word_list = wx.TextCtrl(self.notebook_pane_transcript, wx.ID_ANY, "", style=wx.TE_CHARWRAP | wx.TE_MULTILINE | wx.TE_WORDWRAP)
-        self.word_list.SetToolTip(_("Currently active voice commands"))
-        sizer_4.Add(self.word_list, 3, wx.EXPAND, 0)
-
-        self.grid_1 = wx.grid.Grid(self.notebook_pane_transcript, wx.ID_ANY, size=(1, 1))
-        self.grid_1.CreateGrid(16, 3)
-        self.grid_1.SetRowLabelSize(0)
-        self.grid_1.EnableEditing(0)
-        self.grid_1.EnableDragRowSize(0)
-        self.grid_1.EnableDragGridSize(0)
-        self.grid_1.SetColLabelValue(0, _("________________"))
-        self.grid_1.SetColLabelValue(1, _("________________"))
-        self.grid_1.SetColLabelValue(2, _("________________"))
-        self.grid_1.SetFont(wx.Font(10, wx.FONTFAMILY_MODERN, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, 0, ""))
-        sizer_4.Add(self.grid_1, 0, wx.EXPAND, 0)
-
-        self.notebook_voice_files = wx.Panel(self.notebook, wx.ID_ANY)
-        self.notebook.AddPage(self.notebook_voice_files, _("Voice Files"))
-
-        sizer_22_copy = wx.BoxSizer(wx.HORIZONTAL)
-
-        sizer_23_copy = wx.StaticBoxSizer(wx.StaticBox(self.notebook_voice_files, wx.ID_ANY, _("In Vocola folder")), wx.VERTICAL)
-        sizer_22_copy.Add(sizer_23_copy, 1, wx.EXPAND, 0)
-
-        self.list_box_voice_files = wx.ListBox(self.notebook_voice_files, wx.ID_ANY, choices=[], style=wx.LB_EXTENDED)
-        sizer_23_copy.Add(self.list_box_voice_files, 4, wx.EXPAND, 0)
-
-        sizer_51 = wx.BoxSizer(wx.VERTICAL)
-        sizer_23_copy.Add(sizer_51, 1, wx.EXPAND, 0)
-
-        self.button_edit_voice_file = wx.Button(self.notebook_voice_files, wx.ID_ANY, _("Edit Voice File"))
-        sizer_51.Add(self.button_edit_voice_file, 1, wx.EXPAND, 0)
-
-        self.button_6_copy = wx.Button(self.notebook_voice_files, wx.ID_ANY, _("Delete game file from folder"))
-        self.button_6_copy.SetToolTip(_("Removes a game's VCH file from Vocola folder and adjusts VCL scripts to match"))
-        sizer_51.Add(self.button_6_copy, 1, wx.EXPAND, 0)
-
-        sizer_24_copy = wx.StaticBoxSizer(wx.StaticBox(self.notebook_voice_files, wx.ID_ANY, _("Vocola - Voice Command Language Files")), wx.VERTICAL)
-        sizer_22_copy.Add(sizer_24_copy, 2, wx.EXPAND, 0)
-
-        self.online_voice_files_list = wx.ListCtrl(self.notebook_voice_files, wx.ID_ANY, style=wx.BORDER_SUNKEN | wx.LC_REPORT)
-        sizer_24_copy.Add(self.online_voice_files_list, 4, wx.EXPAND, 0)
-
-        sizer_25_copy = wx.BoxSizer(wx.HORIZONTAL)
-        sizer_24_copy.Add(sizer_25_copy, 1, wx.EXPAND, 0)
-
-        self.button_download_voice_file = wx.Button(self.notebook_voice_files, wx.ID_ANY, _("Download to Vocola folder"))
-        self.button_download_voice_file.SetToolTip(_("Download game VCH file from Quadstick.com and included it in voice commands"))
-        sizer_25_copy.Add(self.button_download_voice_file, 1, wx.EXPAND, 0)
-
-        self.panel_7 = wx.Panel(self.notebook_voice_files, wx.ID_ANY)
-        sizer_25_copy.Add(self.panel_7, 1, wx.EXPAND, 0)
 
         self.notebook_external_pointers = wx.Panel(self.notebook, wx.ID_ANY)
         self.notebook.AddPage(self.notebook_external_pointers, _("External Pointers"))
@@ -1268,10 +1201,6 @@ class QuadStickPreferences(wx.Frame):
 
         self.notebook_external_pointers.SetSizer(sizer_39)
 
-        self.notebook_voice_files.SetSizer(sizer_22_copy)
-
-        self.notebook_pane_transcript.SetSizer(sizer_4)
-
         self.notebook_firmware.SetSizer(sizer_26)
 
         self.notebook_misc.SetSizer(sizer_16)
@@ -1319,14 +1248,7 @@ class QuadStickPreferences(wx.Frame):
         self.Bind(wx.EVT_CHECKBOX, self.EnableUsbCommEvent, self.checkbox_enable_usb_comm)
         self.Bind(wx.EVT_CHECKBOX, self.vgXBoxEvent, self.checkbox_enable_vg_X360)
         self.Bind(wx.EVT_CHECKBOX, self.vgDS4Event, self.checkbox_enable_vg_DS4)
-        self.Bind(wx.EVT_CHECKBOX, self.ToggleHIDHideStatus, self.checkbox__enable_HIDHide)
         self.Bind(wx.EVT_BUTTON, self.DownloadFirmwareEvent, self.download_selected_build)
-        self.Bind(wx.EVT_TEXT_ENTER, self.onMessagePaneEnter, self.voice_transcript)
-        self.Bind(wx.EVT_LISTBOX_DCLICK, self.DeleteFromVocolaEvent, self.list_box_voice_files)
-        self.Bind(wx.EVT_BUTTON, self.OnEditVoiceFile, self.button_edit_voice_file)
-        self.Bind(wx.EVT_BUTTON, self.DeleteFromVocolaEvent, self.button_6_copy)
-        self.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.DownloadVoiceFileEvent, self.online_voice_files_list)
-        self.Bind(wx.EVT_BUTTON, self.DownloadToVocolaEvent, self.button_download_voice_file)
         self.Bind(wx.EVT_SPINCTRL, self.TIR_DeadZoneEvent, self.TIR_DeadZone)
         self.Bind(wx.EVT_CHOICE, self.MouseCaptureModeEvent, self.capture_mode)
         self.Bind(wx.EVT_SPINCTRL, self.MouseCenterXEvent, self.center_x)
@@ -1343,8 +1265,6 @@ class QuadStickPreferences(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.CloseEvent, self)
         self.tbIcon = CustomTaskBarIcon(self)
         self.Bind(wx.EVT_ICONIZE, self.onMinimize, self)
-        self.voice_transcript.Bind(wx.EVT_KEY_DOWN, self.KeyDownEvent, self.voice_transcript)
-        self.voice_transcript.Bind(wx.EVT_KEY_UP, self.KeyUpEvent, self.voice_transcript)
         self.Bind(wx.EVT_CHAR_HOOK, self.KeyDownEvent2, self)
         self.Bind(wx.EVT_KEY_DOWN, self.KeyDownEvent2, self)
         self.Bind(wx.EVT_KEY_UP, self.KeyDownEvent2, self)
@@ -1358,7 +1278,7 @@ class QuadStickPreferences(wx.Frame):
         # factory vs user game list, last active list
         self._last_game_list_selected = None # self.online_game_files_list
         # self.on_timer()
-        
+
     def on_timer(self):  # grabs the mouse location and relays it to the quadstick
         dx, dy = wx.GetDisplaySize()
         #print "display size: ", dx, dy
@@ -1370,12 +1290,12 @@ class QuadStickPreferences(wx.Frame):
                 MOUSE.update_location(xy)
         except Exception as e:
             print(repr(e))
-            
+
         wx.CallLater(20, self.on_timer)
-        
+
     def CallAfter(self, target, *args, **kwds):
         wx.CallAfter(target, *args, **kwds)
-        
+
     def _update_linked_joystick_slider(self, slider, all, vertical, horizontal):
         new_value = min((max((slider.GetValue(), self.slider_NEUTRAL.GetValue() + 5,)), 100,))
         if not hasattr(slider,'_qs_value'):
@@ -1398,7 +1318,7 @@ class QuadStickPreferences(wx.Frame):
             for s in horizontal:
                 s._qs_value = min((max((s.GetValue() + diff, self.slider_NEUTRAL.GetValue() + 5,)), 100,))
                 s.SetValue(s._qs_value)
-    
+
     def slider_UP_event(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'slider_UP_event'")
         self._update_linked_joystick_slider(self.slider_UP,
@@ -1553,7 +1473,7 @@ class QuadStickPreferences(wx.Frame):
         preferences['deflection_multiplier_left']   = str(int(max_joy * 100 / left))
         preferences['deflection_multiplier_right']  = str(int(max_joy * 100 / right))
         preferences['joystick_deflection_minimum']  = str(int(self.slider_NEUTRAL.GetValue()))
-    
+
     def update_joystick_preference_grid(self):
         self.calculate_joystick_preferences()
         self.joystick_preference_grid.SetCellValue(0, 0, 'joystick_deflection_maximum')
@@ -1614,7 +1534,7 @@ class QuadStickPreferences(wx.Frame):
             dialog.ShowModal()
             dialog.Destroy()
             self.text_ctrl_messages.AppendText("Failed to save preferences\r\n")
-   
+
         else: # update status box
             self.text_ctrl_messages.AppendText("Preferences saved OK\r\n")
         event.Skip()
@@ -1658,9 +1578,6 @@ class QuadStickPreferences(wx.Frame):
         global settings
         global preferences
         self.text_ctrl_messages.AppendText("Version: " + VERSION + "\r\n")
-        vocola_installed = os.path.isdir(VocolaPath)
-        if not vocola_installed:
-            self.notebook_voice_files.Disable()
         #print "global settings: ", repr(settings)
         # initialize preferences with the last ones saved before
         # then try to read them from the quadstick
@@ -1680,7 +1597,7 @@ class QuadStickPreferences(wx.Frame):
             self.text_ctrl_messages.AppendText("Loaded preferences OK\n")
             # send telemetry for QMP settings
             settings['preferences'] = preferences
-        else: 
+        else:
             # disable any tabs that need the quadstick
             self.text_ctrl_messages.AppendText("Using previously saved preference values\n")
         if d is None:
@@ -1698,7 +1615,7 @@ class QuadStickPreferences(wx.Frame):
                 telemetry_log('user_game_profiles&' + urllib.parse.urlencode(ugp))
             scratch.pop("voices", None)
             scratch.pop("builds", None)
-            scratch['drive'] = d  
+            scratch['drive'] = d
             telemetry_log('settings&' + urllib.parse.urlencode(scratch))
         except Exception as e:
             print ("initial values telemetry error", repr(e))
@@ -1762,7 +1679,7 @@ class QuadStickPreferences(wx.Frame):
         self.slider_SP_max.SetValue(int(preferences.get('sip_puff_maximum', defaults['sip_puff_maximum'])))
         self.spin_ctrl_SP_low_delay.SetValue(int(preferences.get('sip_puff_delay_soft', defaults['sip_puff_delay_soft'])))
         self.spin_ctrl_SP_high_delay.SetValue(int(preferences.get('sip_puff_delay_hard', defaults['sip_puff_delay_hard'])))
-        
+
         # set up sliders for Lip
         self.slider_Lip_max.SetValue(int(preferences.get('lip_position_maximum', defaults['lip_position_maximum'])))
         self.slider_Lip_min.SetValue(int(preferences.get('lip_position_minimum', defaults['lip_position_minimum'])))
@@ -1804,7 +1721,7 @@ class QuadStickPreferences(wx.Frame):
         self.checkbox_ps4_boot_mode.SetValue(int(preferences.get('enable_DS3_emulation',defaults['enable_DS3_emulation'])) > 0)
         self.checkbox_usb_A_host_mode.SetValue(int(preferences.get('enable_usb_a_host',defaults['enable_usb_a_host'])) > 0)
         self.checkbox_Titan2.SetValue(int(preferences.get('titan_two',defaults['titan_two'])) > 0)
-        
+
         choices = self.choice_mouse_response.GetItems()
         choice_index = preferences.get('mouse_response_curve', defaults['mouse_response_curve'])
         self.choice_mouse_response.Select(int(choice_index))
@@ -1816,24 +1733,12 @@ class QuadStickPreferences(wx.Frame):
             self.list_box_csv_files.InsertColumn(1, "filename")
             self.list_box_csv_files.InsertColumn(2, "Spreadsheet")
         self.update_quadstick_flash_files_items()
-        vocola_installed = os.path.isdir(VocolaPath)
-        if vocola_installed:
-            # get list of voice files
-            x = list_voice_files()
-            self.list_box_voice_files.Clear()
-            self.list_box_voice_files.InsertItems(x, 0)
         # prepare list of online factory game files widget
         if not self.online_game_files_list.GetColumnCount(): # prevent second call here from addingmore columns
             self.online_game_files_list.InsertColumn(0, "filename")
             self.online_game_files_list.InsertColumn(1, "Spreadsheet")
-        if vocola_installed:
-            # prepare list of online voice files widget
-            if not self.online_voice_files_list.GetColumnCount():
-                self.online_voice_files_list.InsertColumn(0, "filename")
-                self.online_voice_files_list.InsertColumn(1, "game name")
         self.update_online_game_files_list_items() #updates widget, not actual list
-        if vocola_installed:
-            self.update_online_voice_files_list_items() #updates widget, not actual list
+
         # initialize any user confuration files
         if not self.user_game_files_list.GetColumnCount(): # prevent second call here from addingmore columns
             self.user_game_files_list.InsertColumn(0, "filename")
@@ -1845,7 +1750,7 @@ class QuadStickPreferences(wx.Frame):
         self.checkbox_minimize_to_tray.SetValue(settings.get('minimize_to_tray', False))
         self.checkbox_start_minimized.SetValue(settings.get('start_mimimized', False))
         # init serial connection enable
-        self.checkbox_enable_serial_port.SetValue(settings.get('enable_serial_port', True))      
+        self.checkbox_enable_serial_port.SetValue(settings.get('enable_serial_port', True))
 
         # set up external pointers tab
         self.TIR_DeadZone.SetValue(int(settings.get('TIR_DeadZone', 0)))
@@ -1865,18 +1770,11 @@ class QuadStickPreferences(wx.Frame):
         if build_number is not None and build_number < 1301:
             if US1:
                 self.text_ctrl_messages.AppendText("You will need to update the Firmware to use the UltraStik")
-                
-        if vocola_installed:
-            try:
-                generate_includes_vch_file()
-                self.InitializeWordList('')
-            except Exception as e:
-                print("generate_includes_vch_file exception in update controls: ", repr(e))
 
         # determine if load_and_run should be enabled or disabled
         # if a com port previously used, usb comm enabled and the qs is plugged in
         # or if bluetooth ssp is enabled, then allow button to run
-        d = find_quadstick_drive()        
+        d = find_quadstick_drive()
         if not ( d or (( preferences.get('bluetooth_device_mode') == 'ssp' ) or has_serial_ports() or usb_comm )):
             self.button_load_and_run.Disable()
             self.button_download_csv.Disable()
@@ -1892,7 +1790,7 @@ class QuadStickPreferences(wx.Frame):
         print('pane lost focus')
         wx.CallLater(3000, self.voice_transcript.SetFocus)
         event.Skip()
-        
+
     def DeleteFromQuadStickEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'DeleteFromQuadStickEvent'")
         #filename = self.list_box_csv_files.GetStringSelection()
@@ -1949,50 +1847,36 @@ class QuadStickPreferences(wx.Frame):
             games, voices = get_factory_game_and_voice_files()  # get csv and vch/vcl file info from Google
             t2 = time.time()
             print("#####  TIME TO GET GAME PROFILES #### ", t2 - t1)
-            self.SetCursor(wx.Cursor(wx.CURSOR_DEFAULT))
-            #self._game_profiles = [fn for fn in files if (fn[3].find(".csv") > 0)]
+            print(games)
             self._game_profiles = games
             QMP.text_ctrl_messages.AppendText("Retrieved " + str(len(self._game_profiles))+ " game files\r\n")
-            self._voice_files = voices
-            QMP.text_ctrl_messages.AppendText("Retrieved " + str(len(self._voice_files))+ " voice files\r\n") # game_name
 
             self.update_online_game_files_list_items()
-            self.update_online_voice_files_list_items()
         except Exception as e:
             print("_ScanGoogleGameProfilesEvent exception: ", repr(e))
 
-    
+
     def update_online_game_files_list_items(self): # updates the display widget with the current game list
         self.online_game_files_list.DeleteAllItems()
         index = 0
 
         self._game_profiles = sorted(self._game_profiles, key=lambda f: f['name'].lower())
-
-        for f in self._game_profiles:
-            #(game_name, folder, path, name, url) 
+        copied_profiles = copy.deepcopy(self._game_profiles)
+        for f in copied_profiles:
+            #(game_name, folder, path, name, url)
+            print(f)
             name = f["name"]
             csv_name = f["csv_name"]
             #print("game name: ", name)
             self.online_game_files_list.InsertItem(index, csv_name)
             self.online_game_files_list.SetItem(index, 1, name)
             index += 1
+            print(index)
+
         self.online_game_files_list.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
         self.online_game_files_list.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
 
-    def update_online_voice_files_list_items(self): # updates the display widget with the current voice list
-        self.online_voice_files_list.DeleteAllItems()
-        index = 0
-        for f in self._voice_files:
-            #(game_name, folder, path, name, url) = f
-            game_name = f["name"]
-            name = f["file_name"]
-            self.online_voice_files_list.InsertItem(index, name)  # was InsertStringItem
-            self.online_voice_files_list.SetItem(index, 1, game_name)  #SetStringItem
-            index += 1
-        self.online_voice_files_list.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
-        self.online_voice_files_list.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
-
-    def update_user_game_files_list_items(self): 
+    def update_user_game_files_list_items(self):
         print("update_user_game_files_list_items")
         self.user_game_files_list.DeleteAllItems()
         index = 0
@@ -2027,8 +1911,8 @@ class QuadStickPreferences(wx.Frame):
                 user_game_profiles = sorted(user_game_profiles, key=lambda f: f['name'].lower())
                 settings["user_game_profiles"] = user_game_profiles
                 settings["profile_url"] = None  # flag that we have imported already
-                # save_repr_file(settings)                
-                
+                # save_repr_file(settings)
+
         # list of dictionary objects with: {"name":name, "id": id, "csv_name":csv_file_name}
         user_game_profiles = sorted(user_game_profiles, key=lambda f: f['name'].lower())
         for gp in user_game_profiles:
@@ -2068,7 +1952,7 @@ class QuadStickPreferences(wx.Frame):
 
     def user_game_files_dropped(self, x, y, data):
         # add a user game config file to the list
-        # check for validity        
+        # check for validity
         self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
         try:
             info = xlsx2csv.get_config_profile_info_from_url(data)
@@ -2096,20 +1980,20 @@ class QuadStickPreferences(wx.Frame):
             self.update_user_game_files_list_items()
         finally:
             self.SetCursor(wx.Cursor(wx.CURSOR_DEFAULT))
-        
+
     def csv_files_dropped(self, x, y, data):
         # add a user game config file to the list
         # get the user's email address if necessary
         email = settings.get('user_email_address', "")
         if len(email) == 0:
-            dlg = wx.TextEntryDialog(self, 'Please Enter Your Email Address','Google Spreadsheets Acount') 
+            dlg = wx.TextEntryDialog(self, 'Please Enter Your Email Address','Google Spreadsheets Acount')
             if dlg.ShowModal() == wx.ID_OK:
                 print(dlg.GetValue())
                 settings['user_email_address'] = dlg.GetValue()
                 telemetry_log('email&email=' + settings.get('user_email_address'))
-            dlg.Destroy() 
+            dlg.Destroy()
 
-        # check for validity        
+        # check for validity
         self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
         try:
             info = xlsx2csv.get_config_profile_info_from_url(data)
@@ -2134,16 +2018,16 @@ class QuadStickPreferences(wx.Frame):
 
     def DownloadCSVFileEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'DownloadCSVFileEvent'")
-        
+
         # get the user's email address if necessary
         email = settings.get('user_email_address', "")
         if len(email) == 0:
-            dlg = wx.TextEntryDialog(self, 'Please Enter Your Email Address','Google Spreadsheets Acount') 
+            dlg = wx.TextEntryDialog(self, 'Please Enter Your Email Address','Google Spreadsheets Acount')
             if dlg.ShowModal() == wx.ID_OK:
                 print(dlg.GetValue())
                 settings['user_email_address'] = dlg.GetValue()
                 telemetry_log('email&email=' + settings.get('user_email_address'))
-            dlg.Destroy() 
+            dlg.Destroy()
         #item = self.online_game_files_list.GetFirstSelected()
         item = self._last_game_list_selected.GetFirstSelected()
 
@@ -2178,7 +2062,7 @@ class QuadStickPreferences(wx.Frame):
                             if info:  # if the csv filename changed, update user list
                                 if gp.get("name") != info.get("name"):
                                     gp['name'] = info['name']
-                                    self.update_user_game_files_list_items()                       
+                                    self.update_user_game_files_list_items()
                         self.text_ctrl_messages.AppendText("Downloaded %s into QuadStick\n" % (gp["name"],))
                 except Exception as e:
                     print(repr(e))
@@ -2190,77 +2074,7 @@ class QuadStickPreferences(wx.Frame):
         finally:
             self.SetCursor(wx.Cursor(wx.CURSOR_DEFAULT))
         event.Skip()
-    
-    def DeleteFromVocolaEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
-        print("Event handler 'DeleteFromVocolaEvent'")
-        selections = self.list_box_voice_files.GetSelections()
-        print(repr(selections))
-        items = self.list_box_voice_files.GetItems()
-        if len(selections) > 0:
-            confirm = wx.MessageDialog( self, "Delete the selected files?", caption="Please confirm", style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION | wx.STAY_ON_TOP )
-            result = confirm.ShowModal()
-            #self.text_ctrl_messages.AppendText(repr(result) + "\n")
-            if result != wx.ID_YES:
-                selections = []                
-        for selection in selections:
-            filename = items[selection]
-            print(repr(filename))
-            try:
-                pathname = VocolaPath + filename
-                os.remove(pathname)
-                self.text_ctrl_messages.AppendText("Removed: " + filename + "\n")
-                #refresh list
-            except:
-                print(pathname + ' not found to delete')
-        generate_includes_vch_file() # refresh the _includes.vch file
-        #refresh list
-        x = list_voice_files()
-        self.list_box_voice_files.Clear()
-        self.list_box_voice_files.InsertItems(x, 0)
-        event.Skip()
-        
-    def OnEditVoiceFile(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
-        print("Event handler 'OnEditVoiceFile'")
-        selections = self.list_box_voice_files.GetSelections()
-        print(repr(selections))
-        items = self.list_box_voice_files.GetItems()
-        for selection in selections:
-            filename = items[selection]
-            print(repr(filename))
-            try:
-                pathname = VocolaPath + filename
-                subprocess.Popen(["notepad.exe",pathname])
-                self.text_ctrl_messages.AppendText("Edit: " + filename + "\n")
-                break
-                #refresh list
-            except:
-                print(pathname + ' not found to delete')
-        generate_includes_vch_file() # refresh the _includes.vch file
-        #refresh list
-        x = list_voice_files()
-        self.list_box_voice_files.Clear()
-        self.list_box_voice_files.InsertItems(x, 0)
-        event.Skip()
-    def DownloadVoiceFileEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
-        print("Event handler 'DownloadVoiceFileEvent'")
-        item = self.online_voice_files_list.GetFirstSelected()
-        print("item ", repr(item))
-        while item >= 0:
-            voice_file_info = self._voice_files[item]
-            id = voice_file_info["id"]
-            file_name = voice_file_info["file_name"]
-            text = get_google_drive_file_by_id(id)
-            save_voice_file(file_name, text)
-            self.text_ctrl_messages.AppendText("Copied: " + file_name + "\r\n")
-            item = self.online_voice_files_list.GetNextSelected(item)
-        #refresh list
-        x = list_voice_files()
-        self.list_box_voice_files.Clear()
-        self.list_box_voice_files.InsertItems(x, 0)
-        event.Skip()
-    def DownloadToVocolaEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
-        print("Event handler 'DownloadToVocolaEvent'")
-        self.DownloadVoiceFileEvent(event)
+
     def NotebookPageChangedEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'NotebookPageChangedEvent'")
         print(repr(event.GetSelection()))
@@ -2284,7 +2098,6 @@ class QuadStickPreferences(wx.Frame):
                 self.list_ctrl_firmware.SetColumnWidth(1,-1)
                 self.SetCursor(wx.Cursor(wx.CURSOR_DEFAULT))
 
-                #self.online_voice_files_list.SetColumnWidth(0, wx.LIST_AUTOSIZE)
         # if page_index == 0 or page_index == 5: # games or voice page
             # if self._read_online_files_flag:
                 # self._read_online_files_flag = False
@@ -2321,7 +2134,7 @@ class QuadStickPreferences(wx.Frame):
             with open(tmp_folder_path + "\\Joystick.zip", "wb", 0) as zipFile:
                 zipFile.write(firmware_image_zip)
                 zipFile.flush()
-            # unzip file 
+            # unzip file
             with ZipFile(tmp_folder_path + "\\Joystick.zip", "r", 0) as zipFile:
                 firmware_image = zipFile.read("Joystick.bin")
             # get quadstick folder
@@ -2397,7 +2210,7 @@ class QuadStickPreferences(wx.Frame):
                         self.text_ctrl_messages.AppendText(" " + file[0] + "\n")
                         wx.Yield()
                     self.text_ctrl_messages.AppendText("Done!\n")
-                    
+
                     # reopen game controller interface
                     try:
                         QS = QuadStickHID(self, self.VG)
@@ -2428,14 +2241,11 @@ class QuadStickPreferences(wx.Frame):
         global EnableTouchPad
         #print "Event handler 'onMessagePaneEnter'"
         #print "Just Entered: ", self.voice_transcript.GetValue()
-        line_count = self.voice_transcript.GetNumberOfLines()
-        buffer = self.voice_transcript.GetLineText(self.voice_transcript.GetNumberOfLines()-1)
-                
+
         #print "last line: ", buffer
         if buffer.find('TITLE:') >= 0:
             # set a new title to control Vocola file active section
             self.SetTitle(_("QuadStick " + self.console_type + " " + buffer[6:]))
-            self.InitializeWordList(buffer[6:])
             buffer = "\r" # just clear buffer
         elif buffer.find('TOUCHPAD:') >=0:
             EnableTouchPad =  buffer.find('ON') > 0
@@ -2445,8 +2255,6 @@ class QuadStickPreferences(wx.Frame):
             EnableTouchPad =  True
         elif buffer.find('TP:0') == 0:
             EnableTouchPad =  False
-        elif buffer.find('RESTART DRAGON NATURALLY SPEAKING!!!') == 0:
-            RestartDragon()
         elif buffer.find('IR_CALIBRATE') == 0:
             if TIR:
                 TIR.center()
@@ -2460,19 +2268,8 @@ class QuadStickPreferences(wx.Frame):
             if buffer.find('!') == 0: #line begins with !
                 SERIAL_PORT_SOCKET.sendto(('\r'+buffer[1:]).encode(), (UDP_IP, UDP_PORT))
 
-        if self.voice_transcript.GetLastPosition() > 1000:
-            self.voice_transcript.Remove(0, 100)
         self.voice_transcript.SetInsertionPointEnd()
         event.Skip()
-    def InitializeWordList(self, title):
-        active_words = "Active Voice Commands\n\n"
-        game_words = VCH_file_words.get(title.strip(),list())
-        if game_words:
-            active_words = active_words + ("\n".join(game_words)) + "\n\n"
-        common_words = VCH_file_words.get('_common_phrases',list())
-        if common_words:
-            active_words = active_words + ("\n".join(common_words)) + "\n\n"        
-        active_words = active_words + CommonVoiceCommands
         self.word_list.SetValue(active_words)
     def CloseEvent(self, event):
         global US1, US2, QS, VG
@@ -2486,10 +2283,10 @@ class QuadStickPreferences(wx.Frame):
                 del settings['WINDOW_POSITION']
             except:
                 pass
-                
+
         settings['minimize_to_tray'] = self.checkbox_minimize_to_tray.GetValue()
         settings['start_mimimized'] = self.checkbox_start_minimized.GetValue()
-        
+
         save_repr_file(settings)
         try:
             #if TIR:
@@ -2590,7 +2387,7 @@ class QuadStickPreferences(wx.Frame):
             # cronusmax.PressTouchPad = 0
             # self.CM.update(None)
         event.Skip()
-        
+
     def TIR_DeadZoneEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'TIR_DeadZoneEvent'")
         settings['TIR_DeadZone'] = self.TIR_DeadZone.GetValue()
@@ -2605,7 +2402,7 @@ class QuadStickPreferences(wx.Frame):
         if selection >= 0:
             filename = self.list_box_csv_files.GetItem(selection, 1).GetText()
             print(repr(filename))
-            if filename == 'prefs.csv': 
+            if filename == 'prefs.csv':
                 self.text_ctrl_messages.AppendText("Sorry, that is not a game file. \n")
                 event.Skip()
                 return
@@ -2654,7 +2451,7 @@ class QuadStickPreferences(wx.Frame):
             webbrowser.open(url, new=2)
             self.text_ctrl_messages.AppendText("Opened: " + game_name + "\n")
             telemetry_log('edit&ss=' + id + '&name=' + path)
-                        
+
         event.Skip()
     def GameListSelected(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         # save last selected game for Edit or Download button action
@@ -2686,7 +2483,7 @@ class QuadStickPreferences(wx.Frame):
     def _deselect_list(self, list):
         item = list.GetFirstSelected()
         while item >= 0:
-            list.SetItemState(item, 0, wx.LIST_STATE_SELECTED) 
+            list.SetItemState(item, 0, wx.LIST_STATE_SELECTED)
             item = list.GetNextSelected(item)
     def BeginDragGame(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         """ Begin a Drag Operation """
@@ -2771,13 +2568,13 @@ class QuadStickPreferences(wx.Frame):
         event.Skip()
     def list_box_csv_files_selected(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'list_box_csv_files_selected'")
-        d = find_quadstick_drive()        
+        d = find_quadstick_drive()
         usb_comm = int(preferences.get('enable_usb_comm', defaults['enable_usb_comm'])) > 0
-        if (d and usb_comm) or ( preferences.get('bluetooth_device_mode') == 'ssp' ) or (self.microterm and self.microterm.serial): 
+        if (d and usb_comm) or ( preferences.get('bluetooth_device_mode') == 'ssp' ) or (self.microterm and self.microterm.serial):
             self.button_load_and_run.Enable()
         self.button_delete_csv.Enable()
         self.GameListSelected(event) #event.Skip()
-        
+
     def MouseCaptureModeEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'MouseCaptureModeEvent'")
         settings['mouse_capture_mode'] = self.capture_mode.GetStringSelection()
@@ -2826,7 +2623,7 @@ class QuadStickPreferences(wx.Frame):
                 self.microterm = mt
                 MT = mt
                 print("Microterm started")
-                if find_quadstick_drive() is None: 
+                if find_quadstick_drive() is None:
                     print("Load preference file over microterm")
                     load_preferences_file(self)
                     wx.CallAfter(self.updateControls)
@@ -2867,7 +2664,7 @@ class QuadStickPreferences(wx.Frame):
         print("Event handler 'PrintFileListEvent'")
         d = find_quadstick_drive()
         answer = [FILE_LIST_HTML_HEADER]
-        files = list_quadstick_csv_files(self) 
+        files = list_quadstick_csv_files(self)
         index = 1
         for f in files:
             if f[0] == 'prefs.csv': continue
@@ -2955,12 +2752,12 @@ class QuadStickPreferences(wx.Frame):
             if self.VG:
                 self.VG.close()
         save_repr_file(settings)
-        if self.QS: 
+        if self.QS:
             self.QS.enable(flag)
         else:
             self.text_ctrl_messages.AppendText("Restart program with QuadStick connected to activate Virtual gamepad emulator\r\n")
         event.Skip()
-        
+
     def vgDS4Event(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         print("Event handler 'vgDS4Event'")
         flag = event.GetEventObject().GetValue()
@@ -2980,12 +2777,12 @@ class QuadStickPreferences(wx.Frame):
             if self.VG:
                 self.VG.close()
         save_repr_file(settings)
-        if self.QS: 
+        if self.QS:
             self.QS.enable(flag)
         else:
             self.text_ctrl_messages.AppendText("Restart program with QuadStick connected to activate Virtual gamepad emulator\r\n")
         event.Skip()
-        
+
     def set_properties(self, dummy):
         print ('SET PROPERTIES *******************************************************************************')
         ib = wx.IconBundle()
@@ -3005,18 +2802,6 @@ class QuadStickPreferences(wx.Frame):
         # self.grid_1.AutoSizeColumns(True)
 
 
-    def ToggleHIDHideStatus(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
-        print("Event handler 'ToggleHIDHideStatus' ")
-        flag = event.GetEventObject().GetValue()
-        try:
-            if flag:
-                H.hide_quadstick(QS)
-            else:
-                H.unhide_quadstick(QS)
-        except:
-            pass
-        event.Skip()
-        
     def on_USB_status_timer(self):  # periodically checks the USB status of the Quadstick
         print ("Check USB status")
         try:
@@ -3050,7 +2835,7 @@ def main():
     global logfile
     global tmp_log_path
     global H
-    
+
     global MT
     MT = None
 
@@ -3058,7 +2843,7 @@ def main():
     # eventually the program stops working with no indication as to why
     print(str(sys.executable))
     tmp_log_path = tempfile.gettempdir() + '\\quad_stick_log_file.txt'
-    if sys.executable.find('python.exe') == -1:
+    if sys.executable.find('python') == -1:
         logfile = open(tmp_log_path, 'wt')
         sys.stdout = sys.stderr = logfile
         print(repr(logfile))
@@ -3077,7 +2862,7 @@ def main():
     except Exception as e:
         print("qmp_filename exception: ", repr(e))
     # load_preferences_file()
-    
+
     gettext.install("app") # part of wxPython internationalization. replace with the appropriate catalog name for different languages
     app = wx.App(0)
     wx.InitAllImageHandlers()
@@ -3087,12 +2872,12 @@ def main():
     # try:
         # generate_includes_vch_file()
     # except Exception as e:
-            # print repr(e) 
+            # print repr(e)
     read_repr_file() # load global settings
     # create the Microterm singleton used for voice and other commands
     QMP.microterm = None
     # set up HIDEHide
- 
+
     print("Load initial values")
     if QMP.load_initial_values():
         print("Initial values loaded")
@@ -3102,23 +2887,18 @@ def main():
         if wp: # if previous window position stored
             if len(wp) == 4: # position and extent saved (new version)
                 x,y,w,h = wp
-                if x > 0 and x < wx.DisplaySize()[0] and y > 0 and y < wx.DisplaySize()[1] and w > 700 and h > 400: 
+                if x > 0 and x < wx.DisplaySize()[0] and y > 0 and y < wx.DisplaySize()[1] and w > 700 and h > 400:
                     QMP.SetRect(wp)
         # open up a listening socket to receive text from Vocola
         SERIAL_PORT_SOCKET = socket.socket(socket.AF_INET, # Internet
                              socket.SOCK_DGRAM) # UDP
-        Vocola = None
         try:
 
             SERIAL_PORT_SOCKET.bind((UDP_IP, UDP_PORT))
-            print("start a listening thread to receive and display messages from vocola")
-            Vocola = VocolaListenerThread(QMP, SERIAL_PORT_SOCKET, QS)
-            Vocola.start()
-
             print("Show Window")
             # https://src.chromium.org/viewvc/chrome/trunk/src/ui/views/win/fullscreen_handler.cc?revision=HEAD&view=markup
             # http://stackoverflow.com/questions/2382464/win32-full-screen-and-hiding-taskbar#5299718
-            
+
             #QMP.SetWindowStyle(wx.STAY_ON_TOP) # go borderless
             #QMP.SetExtraStyle(QMP.GetExtraStyle() & ~(win32con.WS_EX_DLGMODALFRAME |
             #    win32con.WS_EX_WINDOWEDGE | win32con.WS_EX_CLIENTEDGE | win32con.WS_EX_STATICEDGE))
@@ -3126,23 +2906,10 @@ def main():
             QMP.Show()
             VG = None
             QMP.VG = None
-            try:
-                VG = VirtualGamepadEmulator(QMP)  # Opens the DLL, regardless of the presence of a VG
-                VG.DEBUG = DEBUG
-                QMP.VG = VG
-                settings['ViGEmBus'] = 'VIGEM_ERROR_NONE'
-                try:  # set up HIDHide to allow QMP to see the Quadstick
-                    H = HIDHide.HIDHide(QMP)
-                    H.check_for_quadstick_registration()
-                except Exception as e:
-                    print ('HIDHide init error: ' + repr(e))
-                print('ViGEmBus OK')
-            except Exception as e:
-                print(repr(e))
-                settings['ViGEmBus'] = str(e)
-                QMP.text_ctrl_messages.AppendText('ViGEmBus driver not present\r\n')
-                QMP.checkbox_enable_vg_X360.Disable()
-                QMP.checkbox_enable_vg_DS4.Disable()
+
+            QMP.text_ctrl_messages.AppendText('ViGEmBus driver not present\r\n')
+            QMP.checkbox_enable_vg_X360.Disable()
+            QMP.checkbox_enable_vg_DS4.Disable()
             try:
                 QS = QuadStickHID(QMP, VG)
                 QS.enable(settings.get('enable_VGX', True) or settings.get('enable_VG4', True)) # if either emulation is enabled, enable the QS interface
@@ -3158,25 +2925,13 @@ def main():
                 print('Quadstick HID OK')
             except Exception as e:
                 print(repr(e))
-            try:  # initialize the checkbox on the Misc tab
-                if H.is_installed():
-                    QMP.checkbox__enable_HIDHide.SetValue(H.is_hidden(QS))
-                else:
-                    QMP.checkbox__enable_HIDHide.Disable()
-            except Exception as e:
-                print (repr(e))
-                QMP.checkbox__enable_HIDHide.Disable()
-            try:
-                Vocola.qs = QS # vocola initialization was moved up for some forgetton reason but it needs a reference to the quadstick
-            except Exception as e:
-                print (repr(e))
             try:
                 # now open ultrastick
                 US1 = UltraStikHID(QMP)
                 US1.enable(True)
                 US2 = UltraStikHID(QMP)
                 US2.enable(True)
-                US1 = US1.open(QS, 0)  
+                US1 = US1.open(QS, 0)
                 sleep(0.5)
                 US2 = US2.open(QS, 1)
                 # if ultrastik(s) present, US1 (US2) will be hold the interface object
@@ -3205,10 +2960,10 @@ def main():
             wx.CallAfter(QMP.on_USB_status_timer)  # start monitoring the Quadstick HID status
             if settings.get('start_mimimized', False):  # minimize at start
                 wx.CallAfter(QMP.Iconize, True )
-        
-            
-            app.MainLoop()  # 
-        
+
+
+            app.MainLoop()  #
+
         except Exception as e:
             print("unable to open listening socket for vocola")
             print(repr(e))
@@ -3219,9 +2974,6 @@ def main():
                 # pass qmp_filename to other copy of QMP
                 SERIAL_PORT_SOCKET.sendto(b"LOAD: " + qmp_url, (UDP_IP, UDP_PORT))
 
-        # closing window.  Shut everything down.
-        if Vocola:
-            Vocola.kill()
         #print("main loop exiting")
         try:
             if TIR:
@@ -3265,7 +3017,7 @@ def main():
 # if '-minimize' in sys.argv:
     # print ('MINIMIZE AT START')
     # MINIMIZE = True
-    
+
 if '-debug' in sys.argv:
     DEBUG = True
 

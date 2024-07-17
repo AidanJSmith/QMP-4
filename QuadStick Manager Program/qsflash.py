@@ -1,9 +1,8 @@
 ## Quadstick flash drive related functions
 
 import os
-import win32api
 import csv
-import wx
+import subprocess
 
 preferences = {}
 defaults = {
@@ -48,12 +47,10 @@ defaults = {
 
 # Local data storage for program data and game profile list
 
-APPDATA = os.environ['APPDATA']
 
-print ("APPDATA: ", APPDATA)
-
-settings_file = APPDATA + "\\QMP_3_settings.repr"
-old_settings_file = APPDATA + "\\quadstick_settings.repr"
+home_directory = os.path.expanduser("~")
+settings_file = home_directory + '/QMP_3_settings.repr'
+old_settings_file = home_directory + '/quadstick_settings.repr'
 settings = dict()
 
 print("INITIALIZE QSFLASH SETTINGS")
@@ -64,7 +61,6 @@ def read_repr_file():
     try:
         f = open(settings_file, 'r')
         settings_string = f.read()
-        #print ('settings ', repr(settings_string))
         f.close()
         settings.clear()  # modify existing dictionary
         settings.update(eval(settings_string))
@@ -73,7 +69,6 @@ def read_repr_file():
         try:
             f = open(old_settings_file, 'r')
             settings_string = f.read()
-            #print settings_string
             f.close()
             settings.clear()  # modify existing dictionary
             settings.update(eval(settings_string))
@@ -81,8 +76,7 @@ def read_repr_file():
         except:
             print("no old repr file either")
             pass
-        settings.clear() #return NEW blank dictionary
-    #print ("Read settings file:  ", repr(settings))
+        settings.clear()
     return settings
 
 def save_repr_file(settings):
@@ -99,17 +93,19 @@ def find_quadstick_drive(force=None):
     global QuadStickDrive
     if force: QuadStickDrive = None  # force new search for drive
     if QuadStickDrive: return QuadStickDrive
-    drives = win32api.GetLogicalDriveStrings()
-    drives = drives.split('\000')[:-1]
-    for d in drives:
-        try:
-            drive_name = win32api.GetVolumeInformation(d)[0]
-            if drive_name.lower() == "quad stick":
-                print("QuadStick drive letter: ", d)
-                QuadStickDrive = d
-                return d
-        except:
-            pass # try next drive
+
+    volumes_path = '/Volumes'
+    try:
+        volumes = os.listdir(volumes_path)
+
+        for volume in volumes:
+            if "quad" in volume and "stick" in volume:
+                QuadStickDrive = volumes_path + '/' + volume + '/'
+                print("Found drive ", volume)
+                return QuadStickDrive
+    except:
+        print("Failed to get drive")
+
     return None
 
 def load_preferences_file(mainWindow):
@@ -132,9 +128,9 @@ def load_preferences_file(mainWindow):
                     reader = csv.reader(csvfile, delimiter=',')
                     row_count = 0
                     for row in reader:
-                        #print ', '.join(row) 
+                        #print ', '.join(row)
                         # skip header section
-                        if row_count > 3 and row and row[0]: 
+                        if row_count > 3 and row and row[0]:
                             if row[0] == "**END OF FILE**":
                                 break
                             if row[1]:
@@ -152,7 +148,7 @@ def load_preferences_file(mainWindow):
             reader = csv.reader(csvfile, delimiter=',')
             row_count = 0
             for row in reader:
-                #print ', '.join(row) 
+                #print ', '.join(row)
                 # skip header section
                 if row_count > 3 and row and row[0] and row[1]:
                     preferences[row[0]] = row[1]
@@ -205,7 +201,7 @@ def save_preferences_file(preferences):
         keys.sort()
         for key in keys:
             value = preferences[key]
-            csvfile.write(key + ',' + str(value) + ',,\n') 
+            csvfile.write(key + ',' + str(value) + ',,\n')
             # cannot use percent sign in wxGlade source files
         csvfile.flush()
         os.fsync(csvfile.fileno())
@@ -294,14 +290,23 @@ def quadstick_drive_serial_number(mainWindow):
                 if build:
                     return int(build.strip())
         return None
-    drive = os.open('\\\\.\\' + d[:2], os.O_RDONLY | os.O_BINARY)
-    tmp = os.read(drive, 512) # read boot sector 
-    #print (repr(tmp))
-    #print tmp
-    build = tmp[40] * 256 + tmp[39] #drive.read(2) # serial number
-    sn = tmp[41] * 256 + tmp[42]
-    #drive.close()
-    print(repr(build), repr(sn))
+
+    try:
+        result = subprocess.run(['diskutil', 'info', "/" + d.split("/")[1]], capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            if 'Device Node' in line:
+                device = line.split(':')[1].strip()
+    except subprocess.CalledProcessError:
+        print(f"Failed to get device node for {d}.")
+
+    try:
+        with open(device, 'rb') as f:  # Open the device file in binary read mode
+            boot_sector = f.read(512)  # Read the first 512 bytes
+    except Exception:
+        print('I don\'t know how this highfallutin boot sector stuff works. but it\'s just for the serial right?')
+        return 601
+
+    build = boot_sector[40] * 256 + boot_sector[39] #drive.read(2) # serial number
     answer = build #ord(build[0]) + 256 * ord(build[1])
     if answer == 30867: #old firmware
         answer = 601
