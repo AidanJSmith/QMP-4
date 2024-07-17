@@ -19,9 +19,13 @@ class UltraStikHID(object):
 
     def read_data(self):
         while self._us:
-            data = self._us.read(64)
-            if data:
-                self.data_handler(data)
+            try:
+                data = self._us.read(64)
+                if data:
+                    self._last_read_successful = True
+                    self.data_handler(data)
+            except Exception as e:
+                self._last_read_successful = False
 
     def open(self, qs, device_id=0):
         try:

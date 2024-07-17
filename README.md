@@ -20,6 +20,6 @@ To run it for development, simply execute.
 python3 QuadStick.py
 ```
 
-### Building for prod
+## Maintenance
 
-... is coming in a commit soon.
+Neither Aidan nor Neuralink corporation intend to keep this up to date with the upstream (which has not been updated itself in a reasonable amount of time). If any contributor would like to add additional features, please make an MR!

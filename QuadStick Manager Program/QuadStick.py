@@ -1864,14 +1864,12 @@ class QuadStickPreferences(wx.Frame):
         copied_profiles = copy.deepcopy(self._game_profiles)
         for f in copied_profiles:
             #(game_name, folder, path, name, url)
-            print(f)
             name = f["name"]
             csv_name = f["csv_name"]
             #print("game name: ", name)
             self.online_game_files_list.InsertItem(index, csv_name)
             self.online_game_files_list.SetItem(index, 1, name)
             index += 1
-            print(index)
 
         self.online_game_files_list.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
         self.online_game_files_list.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER) # resize column to match new items
