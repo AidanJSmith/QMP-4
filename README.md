@@ -20,6 +20,28 @@ To run it for development, simply execute.
 python3 QuadStick.py
 ```
 
+To build the app file, do the following:
+
+Active your environment
+
+```sh
+
+python3 -m pip install -r requirements.txt
+
+
+pyinstaller QuadStick\ Manager\ Program/QuadStick_Mac.spec 
+```
+
+You'll find the .app file in <br>
+
+``` QMP-4/QuadStick Manager Program/dist/QuadStick.app ```
+
+
 ## Maintenance
 
 Neither Aidan nor Neuralink corporation intend to keep this up to date with the upstream (which has not been updated itself in a reasonable amount of time). If any contributor would like to add additional features, please make an MR!
+
+
+## Running the Application
+
+A default QuadStick.app file exists in the root directory of this repository. Drag this into your Applications folder on Mac

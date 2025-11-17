@@ -1,0 +1,6 @@
+wxPython
+pyrfc6266
+pyserial
+hidapi
+Cython
+pyinstaller
