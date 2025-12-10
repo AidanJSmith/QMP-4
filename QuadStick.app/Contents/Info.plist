@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>QuadStick</string>
+	<key>CFBundleExecutable</key>
+	<string>QuadStick</string>
+	<key>CFBundleIconFile</key>
+	<string>generated-906c62c618a0607cb68f13b093863e15354ab6ef1a5049507b40f13dfc37d175.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.quadstick.manager</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>QuadStick</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>NSHighResolutionCapable</key>
+	<string>True</string>
+	<key>NSRequiresAquaSystemAppearance</key>
+	<string>False</string>
+</dict>
+</plist>

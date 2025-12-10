@@ -1757,7 +1757,7 @@ class QuadStickPreferences(wx.Frame):
         #self.checkbox_trackir_start.SetValue(int(settings.get('TIR_Window', 0)))
         # Firmware notebook page widgets
         build_number = quadstick_drive_serial_number(self)
-        self.build_number_text.SetValue(str(build_number))
+        self.build_number_text.SetValue(str(build_number) if build_number else "Unknown")
         self._available_firmware_list = None
         if not self.list_ctrl_firmware.GetColumnCount():
             self.list_ctrl_firmware.InsertColumn(0, "build")
@@ -2104,12 +2104,12 @@ class QuadStickPreferences(wx.Frame):
                 # #self.text_ctrl_messages.SetFocus()  # return the focus to the text pane
         settings['last_page'] = page_index
         event.Skip()
+    
     def DownloadFirmwareEvent(self, event):  # wxGlade: QuadStickPreferences.<event_handler>
         global QuadStickDrive
         global QS
         import shutil
         import tempfile
-        import win32file
         from zipfile import ZipFile
         print("Event handler 'DownloadFirmwareEvent'")
         item = self.list_ctrl_firmware.GetFirstSelected()
@@ -2125,15 +2125,16 @@ class QuadStickPreferences(wx.Frame):
             self.text_ctrl_messages.AppendText("Download new firmware file.  Please wait...\n")
             firmware_image_zip = get_google_drive_file_by_id(self._builds[item]["id"])
             # save contents of quadstick
-            tmp_folder_path = tempfile.gettempdir() + '\\quad_stick_temporary_files'
+            tmp_folder_path = os.path.join(tempfile.gettempdir(), 'quad_stick_temporary_files')
             shutil.rmtree(tmp_folder_path, True)
-            tmp_folder = os.mkdir(tmp_folder_path)
+            os.mkdir(tmp_folder_path)
             # write zip file to temp folder and unzip it
-            with open(tmp_folder_path + "\\Joystick.zip", "wb", 0) as zipFile:
+            zip_path = os.path.join(tmp_folder_path, "Joystick.zip")
+            with open(zip_path, "wb") as zipFile:
                 zipFile.write(firmware_image_zip)
                 zipFile.flush()
             # unzip file
-            with ZipFile(tmp_folder_path + "\\Joystick.zip", "r", 0) as zipFile:
+            with ZipFile(zip_path, "r") as zipFile:
                 firmware_image = zipFile.read("Joystick.bin")
             # get quadstick folder
             qs = find_quadstick_drive()
@@ -2149,29 +2150,24 @@ class QuadStickPreferences(wx.Frame):
             except Exception as e:
                 print(repr(e))
             for file in csv_file_list:
-                shutil.copyfile(qs + file[0], tmp_folder_path + "\\" + file[0])
+                shutil.copyfile(qs + file[0], os.path.join(tmp_folder_path, file[0]))
                 self.text_ctrl_messages.AppendText(" " + file[0] + "\n")
                 wx.Yield()
             self.text_ctrl_messages.AppendText("CSV files backed up to: " + tmp_folder_path + "\n")
             self.text_ctrl_messages.AppendText("Write new firmware file to QuadStick\n")
-            handle = win32file.CreateFile(qs + "Joystick.tmp", win32file.GENERIC_WRITE , 0 , None, win32file.CREATE_ALWAYS , win32file.FILE_FLAG_WRITE_THROUGH , None )
-            print("file handle: ", handle)
+            # write firmware using cross-platform method
+            fw_tmp_path = qs + "Joystick.tmp"
+            with open(fw_tmp_path, 'wb') as fwfile:
+                fwfile.write(firmware_image)
+                fwfile.flush()
+                os.fsync(fwfile.fileno())
             print("image size: ", len(firmware_image))
-            win32file.WriteFile(handle, firmware_image)
-            win32file.FlushFileBuffers(handle)
-            win32file.CloseHandle(handle)
-            # with open(qs + "Joystick.tmp", 'wb', 0) as fwfile:
-                # # write header
-                # fwfile.write(firmware_image)
-                # fwfile.flush()
-                # os.fsync(fwfile.fileno())
             sleep(5)
             try:
                 os.remove(qs + "Joystick.bin")
             except:
                 pass
-            os.rename(qs + "Joystick.tmp",qs + "Joystick.bin")
-            #del(fwfile)
+            os.rename(qs + "Joystick.tmp", qs + "Joystick.bin")
             self.text_ctrl_messages.AppendText("Wait for QuadStick to reboot...\n")
             wx.Yield()
             if QS:
@@ -2189,7 +2185,8 @@ class QuadStickPreferences(wx.Frame):
                 self.text_ctrl_messages.AppendText("\nQuadStick rebooting\n")
             else:
                 self.text_ctrl_messages.AppendText("\nQuadStick reboot not detected\n")
-                wx.MessageBox("The QuadStick did not automatically reboot!\n\nIn Windows Explorer 'Eject' the QuadStick drive.\nIf QuadStick does not restart in ten seconds,\nunplug it and plug it back in\nthen click OK", 'Error', wx.OK | wx.ICON_ERROR)
+                eject_msg = "The QuadStick did not automatically reboot!\n\nEject the QuadStick drive.\nIf QuadStick does not restart in ten seconds,\nunplug it and plug it back in\nthen click OK"
+                wx.MessageBox(eject_msg, 'Error', wx.OK | wx.ICON_ERROR)
             self.text_ctrl_messages.AppendText("Waiting for QuadStick to install new firmware...\n")
             for i in range(5):
                 for sec in range(60):
@@ -2204,7 +2201,7 @@ class QuadStickPreferences(wx.Frame):
                     self.text_ctrl_messages.AppendText("\nCopy files back\n")
                     sleep(4)
                     for file in csv_file_list:
-                        shutil.copyfile(tmp_folder_path + "\\" + file[0], qs + file[0])
+                        shutil.copyfile(os.path.join(tmp_folder_path, file[0]), qs + file[0])
                         self.text_ctrl_messages.AppendText(" " + file[0] + "\n")
                         wx.Yield()
                     self.text_ctrl_messages.AppendText("Done!\n")
@@ -2228,7 +2225,8 @@ class QuadStickPreferences(wx.Frame):
                     if result != wx.ID_YES:
                         break
             #shutil.rmtree(tmp_folder_path, True)
-            self.build_number_text.SetValue(str(quadstick_drive_serial_number(self)))
+            new_build = quadstick_drive_serial_number(self)
+            self.build_number_text.SetValue(str(new_build) if new_build else "Unknown")
             self.update_online_game_files_list_items()
             self.update_quadstick_flash_files_items()
             self.updateControls()

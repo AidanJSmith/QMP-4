@@ -280,9 +280,6 @@ def quadstick_drive_serial_number(mainWindow):
     if d is None:
         print("quadstick flash drive not found")
         if mainWindow.microterm:
-            #mainWindow.text_ctrl_messages.AppendText( "Searching for Bluetooth or serial connection... ")
-            # try a serial connection if bluetooth ssp enabled
-            #if preferences.get("bluetooth_device_mode") == "ssp":
             mt = mainWindow.microterm
             if mt.serial:
                 build = mt.get_build()
@@ -291,23 +288,52 @@ def quadstick_drive_serial_number(mainWindow):
                     return int(build.strip())
         return None
 
-    try:
-        result = subprocess.run(['diskutil', 'info', "/" + d.split("/")[1]], capture_output=True, text=True, check=True)
-        for line in result.stdout.splitlines():
-            if 'Device Node' in line:
-                device = line.split(':')[1].strip()
-    except subprocess.CalledProcessError:
-        print(f"Failed to get device node for {d}.")
-
-    try:
-        with open(device, 'rb') as f:  # Open the device file in binary read mode
-            boot_sector = f.read(512)  # Read the first 512 bytes
-    except Exception:
-        print('I don\'t know how this highfallutin boot sector stuff works. but it\'s just for the serial right?')
-        return 601
-
-    build = boot_sector[40] * 256 + boot_sector[39] #drive.read(2) # serial number
-    answer = build #ord(build[0]) + 256 * ord(build[1])
-    if answer == 30867: #old firmware
-        answer = 601
-    return answer
+    import sys
+    if sys.platform == 'darwin':
+        # macOS: use diskutil to get device node, then read boot sector with dd
+        try:
+            mount_point = d.rstrip('/')
+            result = subprocess.run(['diskutil', 'info', mount_point], capture_output=True, text=True)
+            device = None
+            for line in result.stdout.splitlines():
+                if 'Device Node' in line:
+                    device = line.split(':')[1].strip()
+                    break
+            if device:
+                # use dd to read boot sector (works without root for mounted volumes)
+                result = subprocess.run(
+                    ['dd', f'if={device}', 'bs=512', 'count=1'],
+                    capture_output=True
+                )
+                if result.returncode == 0 and len(result.stdout) >= 41:
+                    boot_sector = result.stdout
+                    build = boot_sector[40] * 256 + boot_sector[39]
+                    if build == 30867:  # old firmware marker
+                        build = 601
+                    return build
+        except Exception as e:
+            print(f"Mac serial number read error: {e}")
+        return None
+    else:
+        # Windows path
+        try:
+            import win32file
+            drive = d
+            handle = win32file.CreateFile(
+                "\\\\.\\" + drive[:2],
+                win32file.GENERIC_READ,
+                win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE,
+                None,
+                win32file.OPEN_EXISTING,
+                0,
+                None
+            )
+            boot_sector = win32file.ReadFile(handle, 512)[1]
+            win32file.CloseHandle(handle)
+            build = boot_sector[40] * 256 + boot_sector[39]
+            if build == 30867:
+                build = 601
+            return build
+        except Exception as e:
+            print(f"Windows serial number read error: {e}")
+        return None
