@@ -10,6 +10,47 @@ import base64
 import wx
 import time
 import traceback
+import ssl
+import sys
+
+## SSL Certificate fix for macOS
+## on mac, python often can't find SSL certificates, causing HTTPS requests to fail
+def setup_ssl_for_mac():
+    if sys.platform == 'darwin':
+        try:
+            # first try to use certifi certificate bundle if available
+            import certifi
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+            opener = urllib.request.build_opener(https_handler)
+            urllib.request.install_opener(opener)
+            print("SSL: Using certifi certificates")
+        except ImportError:
+            try:
+                # try to use macOS system certificates
+                import subprocess
+                cert_path = '/etc/ssl/cert.pem'
+                if os.path.exists(cert_path):
+                    ssl_context = ssl.create_default_context(cafile=cert_path)
+                    https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+                    opener = urllib.request.build_opener(https_handler)
+                    urllib.request.install_opener(opener)
+                    print("SSL: Using system certificates")
+                else:
+                    raise FileNotFoundError("No system certificates found")
+            except Exception as e:
+                print(f"SSL: Warning - Could not configure certificates ({e})")
+                print("SSL: Using unverified context as fallback")
+                # last resort, disable certificate verification (not ideal but works)
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+                opener = urllib.request.build_opener(https_handler)
+                urllib.request.install_opener(opener)
+
+# run SSL setup when this module is imported
+setup_ssl_for_mac()
 
 ## Google Drive related functions to find and read CSV and VCH/VCL files
 

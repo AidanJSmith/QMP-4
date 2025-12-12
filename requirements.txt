@@ -1,0 +1,8 @@
+wxPython
+pyrfc6266
+pyserial
+hidapi
+Cython
+pyinstaller
+openpyxl
+certifi

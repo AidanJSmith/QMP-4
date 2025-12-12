@@ -108,7 +108,7 @@ def resource_path(relative_path):
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = os.path.dirname(os.path.abspath(__file__))
 
     return os.path.join(base_path, relative_path)
 
@@ -1263,6 +1263,15 @@ class QuadStickPreferences(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.ReloadFromQuadstick, self.button_reload)
         # end wxGlade
         self.Bind(wx.EVT_CLOSE, self.CloseEvent, self)
+        
+        # menu bar for mac cmd+q support
+        menubar = wx.MenuBar()
+        file_menu = wx.Menu()
+        quit_item = file_menu.Append(wx.ID_EXIT, "Quit\tCtrl+Q")
+        self.Bind(wx.EVT_MENU, self.CancelAndClose, quit_item)
+        menubar.Append(file_menu, "&File")
+        self.SetMenuBar(menubar)
+        
         self.tbIcon = CustomTaskBarIcon(self)
         self.Bind(wx.EVT_ICONIZE, self.onMinimize, self)
         self.Bind(wx.EVT_CHAR_HOOK, self.KeyDownEvent2, self)
@@ -1820,7 +1829,7 @@ class QuadStickPreferences(wx.Frame):
                                 print("DeleteFromQuadStickEvent exception: ", repr(e))
                                 self.text_ctrl_messages.AppendText("Exception while removing: " + filename + "\n")
                         selection = self.list_box_csv_files.GetNextSelected(selection)
-            self.update_quadstick_flash_files_items()
+                    wx.CallLater(500, self.update_quadstick_flash_files_items)
         except Exception as e:
             print("Exception during DeleteFromQuadStickEvent")
             print(repr(e))
@@ -1841,7 +1850,7 @@ class QuadStickPreferences(wx.Frame):
 
     def _ScanGoogleGameProfilesEvent(self):
         try:
-            self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
+            wx.CallAfter(self.SetCursor, wx.Cursor(wx.CURSOR_WAIT))
             import time
             t1 = time.time()
             games, voices = get_factory_game_and_voice_files()  # get csv and vch/vcl file info from Google
@@ -1849,9 +1858,10 @@ class QuadStickPreferences(wx.Frame):
             print("#####  TIME TO GET GAME PROFILES #### ", t2 - t1)
             print(games)
             self._game_profiles = games
-            QMP.text_ctrl_messages.AppendText("Retrieved " + str(len(self._game_profiles))+ " game files\r\n")
+            wx.CallAfter(QMP.text_ctrl_messages.AppendText, "Retrieved " + str(len(self._game_profiles))+ " game files\r\n")
 
-            self.update_online_game_files_list_items()
+            wx.CallAfter(self.update_online_game_files_list_items)
+            wx.CallAfter(self.SetCursor, wx.Cursor(wx.CURSOR_DEFAULT))
         except Exception as e:
             print("_ScanGoogleGameProfilesEvent exception: ", repr(e))
 

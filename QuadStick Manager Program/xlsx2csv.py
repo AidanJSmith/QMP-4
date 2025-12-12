@@ -16,6 +16,45 @@ import shutil
 from openpyxl import load_workbook
 import pyrfc6266
 import time
+import ssl
+
+## SSL Certificate fix for macOS
+## on mac, python often can't find SSL certificates, causing HTTPS requests to fail
+def setup_ssl_for_mac():
+    if sys.platform == 'darwin':
+        try:
+            # first try to use certifi certificate bundle if available
+            import certifi
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+            opener = urllib.request.build_opener(https_handler)
+            urllib.request.install_opener(opener)
+            print("xlsx2csv SSL: Using certifi certificates")
+        except ImportError:
+            try:
+                # try to use macOS system certificates
+                cert_path = '/etc/ssl/cert.pem'
+                if os.path.exists(cert_path):
+                    ssl_context = ssl.create_default_context(cafile=cert_path)
+                    https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+                    opener = urllib.request.build_opener(https_handler)
+                    urllib.request.install_opener(opener)
+                    print("xlsx2csv SSL: Using system certificates")
+                else:
+                    raise FileNotFoundError("No system certificates found")
+            except Exception as e:
+                print(f"xlsx2csv SSL: Warning - Could not configure certificates ({e})")
+                print("xlsx2csv SSL: Using unverified context as fallback")
+                # last resort, disable certificate verification
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+                opener = urllib.request.build_opener(https_handler)
+                urllib.request.install_opener(opener)
+
+# run SSL setup when this module is imported
+setup_ssl_for_mac()
 
 def get_google_doc_from_id(id):
     try: # to get published spreadsheet
@@ -170,6 +209,9 @@ def write_csv_file_for(id, drive=None, QMP=None):
             csv_file.write("\n".join(lines)) # blank line separates sheets in csv file
             csv_file.flush()
             os.fsync(csv_file.fileno())
+        # delete mac ._ files that may have been created
+        from qsflash import cleanup_macos_dot_files
+        cleanup_macos_dot_files(drive)
     else: # try serial port
         from microterm import microterm
         mt = microterm()

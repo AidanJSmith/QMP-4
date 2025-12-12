@@ -144,7 +144,7 @@ def load_preferences_file(mainWindow):
     preferences.clear()
     preferences.update(defaults.copy()) # start out with defaults for any missing items
     try:
-        with open(pathname.encode()) as csvfile:
+        with open(pathname) as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             row_count = 0
             for row in reader:
@@ -224,6 +224,17 @@ def save_csv_file(name, text):
         os.fsync(csvfile.fileno())
     return True
 
+def cleanup_macos_dot_files(drive_path):
+    # remove mac ._ files from the drive
+    if not drive_path:
+        return
+    try:
+        for f in os.listdir(drive_path):
+            if f.startswith('._'):
+                os.remove(drive_path + f)
+    except:
+        pass
+
 def list_quadstick_csv_files(mainWindow):  # quadstick flash drive
     mainWindow._csv_files = []
     d = find_quadstick_drive()
@@ -232,10 +243,10 @@ def list_quadstick_csv_files(mainWindow):  # quadstick flash drive
         if mainWindow.microterm:
             return mainWindow.microterm.list_files()
         return []
-    print ('quadstick drive letter ', repr(d))
-    for (paths, dirs, file_names) in os.walk(d):
-        break #first level directory only is what we want
-    csv_files = [n for n in file_names if (n.lower().find(".csv") > 0)] # only want .csv
+    print('quadstick drive letter ', repr(d))
+    cleanup_macos_dot_files(d)
+    file_names = os.listdir(d)
+    csv_files = [n for n in file_names if n.lower().endswith('.csv') and not n.startswith('._')]
     file_list = []
     #move default and prefs to front
     if "prefs.csv" in csv_files:
@@ -254,7 +265,7 @@ def list_quadstick_csv_files(mainWindow):  # quadstick flash drive
         try:
             pathname = d + name
             print(repr(pathname))
-            with open(pathname.encode()) as csvfile:
+            with open(pathname) as csvfile:
                 firstline = csvfile.readline()
             parts = firstline.split(",")
             print(repr(parts))
